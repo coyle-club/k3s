@@ -3,7 +3,7 @@ write-kubeconfig-mode: 644
 cluster-cidr: "10.0.0.0/16"
 service-cidr: "10.1.0.0/16"
 cluster-dns: "10.1.0.1"
-cluster-domain: "k3s.coyle.club"
+cluster-domain: "coyle.club"
 flannel-backend: "none"
 disable:
 - traefik
