@@ -12,3 +12,5 @@ sudo cp 10-coylenet.conflist /etc/cni/net.d/
 sudo service k3s start
 
 kubectl apply -f dns.yaml
+
+kubectl apply -f nginx.yaml
