@@ -7,5 +7,6 @@ cluster-domain: "k3s.coyle.club"
 flannel-backend: "none"
 disable:
 - traefik
+- metrics-server
 disable-network-policy: true
 no-flannel: true
