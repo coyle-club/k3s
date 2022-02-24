@@ -1,0 +1,83 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: expose-conf
+  namespace: default
+data:
+  expose.conf: |
+    server_names_hash_bucket_size 64;
+
+    server {
+      listen 80;
+      server_name expose.default.svc.coyle.club;
+
+      location / {
+        return 200 "OK";
+      }
+    }
+
+    server {
+        listen 80;
+
+        auth_basic           "Top Secret";
+        auth_basic_user_file /etc/nginx/conf.d/htpasswd;
+
+        server_name ~^(?<k3s_service_name>[a-zA-Z][a-zA-Z0-9-]*[a-zA-Z0-9])\.coyle\.club$;
+
+        location / {
+          resolver 10.1.0.2;
+          set $upstream_endpoint http://$k3s_service_name.default.svc.coyle.club;
+          proxy_pass $upstream_endpoint$request_uri;
+          proxy_http_version 1.1;
+        }
+    }
+  htpasswd: |
+    test:2ES7eMaRBSzFk
+# ^ knowingly unsafe
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: expose
+  name: expose
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: expose
+  template:
+    metadata:
+      labels:
+        app: expose
+    spec:
+      containers:
+      - image: nginx
+        name: nginx
+        ports:
+        - containerPort: 80
+        volumeMounts:
+        - mountPath: /etc/nginx/conf.d
+          name: expose-conf
+      volumes:
+      - name: expose-conf
+        configMap:
+          name: expose-conf
+---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app: expose
+  name: expose
+  namespace: default
+spec:
+  clusterIP: 10.1.0.3
+  ports:
+  - name: "80"
+    port: 80
+    protocol: TCP
+    targetPort: 80
+  selector:
+    app: expose

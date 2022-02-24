@@ -14,3 +14,8 @@ sudo service k3s start
 kubectl apply -f dns.yaml
 
 kubectl apply -f nginx.yaml
+
+kubectl apply -f expose.yaml
+
+kubectl create namespace cert-manager
+kubectl apply -f cert-manager-arm.yaml
