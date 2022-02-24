@@ -2,7 +2,7 @@ write-kubeconfig-value: "/etc/rancher/k3s/k3s.yaml"
 write-kubeconfig-mode: 644
 cluster-cidr: "10.0.0.0/16"
 service-cidr: "10.1.0.0/16"
-cluster-dns: "10.1.0.1"
+cluster-dns: "10.1.0.2"
 cluster-domain: "coyle.club"
 flannel-backend: "none"
 disable:
