@@ -7,16 +7,11 @@ metadata:
   namespace: kube-system
 spec:
   clusterIP: 10.1.0.2
-  internalTrafficPolicy: Cluster
-  ipFamilies:
-  - IPv4
-  ipFamilyPolicy: SingleStack
   ports:
-  - name: "53"
+  - name: dns
     port: 53
     protocol: UDP
     targetPort: 53
   selector:
     k8s-app: kube-dns
-  sessionAffinity: None
   type: ClusterIP
