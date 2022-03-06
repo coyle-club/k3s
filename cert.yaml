@@ -1,0 +1,13 @@
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: coyle-wildcard
+  namespace: default
+spec:
+  secretName: coyle-wildcard
+  dnsNames:
+  - '*.coyle.club'
+  - '*.default.svc.coyle.club'
+  issuerRef:
+    name: letsencrypt
+    kind: ClusterIssuer

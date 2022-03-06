@@ -7,27 +7,42 @@ data:
   expose.conf: |
     server_names_hash_bucket_size 64;
 
+    map $host $upstream_endpoint {
+      nginx.coyle.club nginx.default.svc.coyle.club;
+      default "";
+    }
+
     server {
       listen 80;
-      server_name expose.default.svc.coyle.club;
 
-      location / {
+      location /healthcheck {
         return 200 "OK";
       }
     }
 
     server {
-        listen 80;
+      listen 80;
+      server_name *.coyle.club;
+
+      location / {
+        return 301 https://$host$request_uri;
+      }
+    }
+
+    server {
+        listen 443 ssl;
+
+        ssl_certificate /etc/nginx/ssl/tls.crt;
+        ssl_certificate_key /etc/nginx/ssl/tls.key;
 
         auth_basic           "Top Secret";
         auth_basic_user_file /etc/nginx/conf.d/htpasswd;
 
-        server_name ~^(?<k3s_service_name>[a-zA-Z][a-zA-Z0-9-]*[a-zA-Z0-9])\.coyle\.club$;
+        server_name *.coyle.club;
 
         location / {
           resolver 10.1.0.2;
-          set $upstream_endpoint http://$k3s_service_name.default.svc.coyle.club;
-          proxy_pass $upstream_endpoint$request_uri;
+          proxy_pass http://$upstream_endpoint$request_uri;
           proxy_http_version 1.1;
         }
     }
@@ -57,13 +72,19 @@ spec:
         name: nginx
         ports:
         - containerPort: 80
+        - containerPort: 443
         volumeMounts:
         - mountPath: /etc/nginx/conf.d
           name: expose-conf
+        - mountPath: /etc/nginx/ssl
+          name: ssl
       volumes:
       - name: expose-conf
         configMap:
           name: expose-conf
+      - name: ssl
+        secret:
+          secretName: coyle-wildcard
 ---
 apiVersion: v1
 kind: Service
@@ -75,9 +96,13 @@ metadata:
 spec:
   clusterIP: 10.1.0.3
   ports:
-  - name: "80"
+  - name: http
     port: 80
     protocol: TCP
     targetPort: 80
+  - name: https
+    port: 443
+    protocol: TCP
+    targetPort: 443
   selector:
     app: expose
