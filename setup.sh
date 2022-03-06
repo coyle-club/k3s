@@ -24,9 +24,11 @@ sudo service k3s start
 
 NODE_NAME=$(hostname)
 echo "Attempting to get podCIDR for node $NODE_NAME..."
-while ! POD_CIDR=$(kubectl get node $NODE_NAME -o=jsonpath={.spec.podCIDR}); do
+POD_CIDR=$(kubectl get node $NODE_NAME -o=jsonpath={.spec.podCIDR})
+while [[ $POD_CIDR != "" ]]; do
 	echo "Trying again in 2 sec"
 	sleep 2
+	POD_CIDR=$(kubectl get node $NODE_NAME -o=jsonpath={.spec.podCIDR})
 done
 echo " -> $POD_CIDR"
 
