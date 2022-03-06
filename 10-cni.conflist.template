@@ -3,8 +3,8 @@
   "cniVersion": "0.3.1",
   "plugins": [
     {
+      "name": "k3s",
       "type": "bridge",
-      "bridge": "docker0",
       "isDefaultGateway": true,
       "forceAddress": false,
       "ipMasq": true,

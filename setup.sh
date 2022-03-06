@@ -37,15 +37,21 @@ sed "s!__POD_CIDR__!$POD_CIDR!g" 10-cni.conflist.template > /tmp/cni.conflist
 sudo cp /tmp/cni.conflist /etc/cni/net.d/10-cni.conflist
 rm /tmp/cni.conflist
 
-kubectl apply -f expose.yaml
-
 echo "Setting up cert-manager..."
 kubectl create namespace cert-manager
 
 kubectl apply -f cert-manager.yaml
+
+echo "Waiting for cert-manager pod to be Ready..."
+kubectl wait pod --for=condition=Ready -l app=cert-manager -n cert-manager
 
 if [[ -f /etc/cloudflare/cloudflare-api-token ]]; then
 	kubectl create secret generic cloudflare -n cert-manager --from-file=cloudflare-api-token=/etc/cloudflare/cloudflare-api-token
 fi
 kubectl apply -f letsencrypt.yaml
 kubectl apply -f cert.yaml
+
+echo "Waiting for coyle.club cert..."
+kubectl wait certificate coyle-wildcard --for=condition=Ready
+
+kubectl apply -f expose.yaml
