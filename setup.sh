@@ -33,8 +33,9 @@ done
 echo " -> $POD_CIDR"
 
 echo "Writing CNI config..."
-sed "s!__POD_CIDR__!$POD_CIDR!g" 10-coylenet.conflist
-sudo cp 10-coylenet.conflist /etc/cni/net.d/
+sed "s!__POD_CIDR__!$POD_CIDR!g" 10-cni.conflist.template > /tmp/cni.conflist
+sudo cp /tmp/cni.conflist /etc/cni/net.d/10-cni.conflist
+rm /tmp/cni.conflist
 
 # kubectl apply -f dns.yaml
 kubectl apply -f expose.yaml
