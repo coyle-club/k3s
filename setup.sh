@@ -43,7 +43,8 @@ kubectl create namespace cert-manager
 kubectl apply -f cert-manager.yaml
 
 echo "Waiting for cert-manager pod to be Ready..."
-kubectl wait pod --for=condition=Ready -l app=cert-manager -n cert-manager
+kubectl wait pod --for=condition=Ready -l app=cert-manager -n cert-manager --timeout=120s
+kubectl wait pod --for=condition=Ready -l app=cert-manager-webhook -n cert-manager --timeout=120s
 
 if [[ -f /etc/cloudflare/cloudflare-api-token ]]; then
 	kubectl create secret generic cloudflare -n cert-manager --from-file=cloudflare-api-token=/etc/cloudflare/cloudflare-api-token
@@ -52,6 +53,6 @@ kubectl apply -f letsencrypt.yaml
 kubectl apply -f cert.yaml
 
 echo "Waiting for coyle.club cert..."
-kubectl wait certificate coyle-wildcard --for=condition=Ready
+kubectl wait certificate coyle-wildcard --for=condition=Ready --timeout=600s
 
 kubectl apply -f expose.yaml
