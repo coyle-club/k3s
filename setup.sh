@@ -14,11 +14,38 @@ curl -sfL https://get.k3s.io | INSTALL_K3S_SKIP_START=true sh - $@
 sudo mkdir -p /etc/rancher/k3s
 
 sudo cp config.yaml /etc/rancher/k3s/
-sudo cp 10-coylenet.conflist /etc/cni/net.d/
 
 sudo service k3s start
 
-kubectl apply -f subnets.yaml
+NODE_NAME=$(hostname)
+echo "Attempting to get podCIDR for node $NODE_NAME..."
+while ! POD_CIDR=$(kubectl get node $NODE_NAME -o=jsonpath={.spec.podCIDR}); do
+	echo "Trying again in 2 sec..."
+	sleep 2
+done
+
+sudo cat << EOF > /etc/cni/net.d/10-coylenet.conflist
+{
+  "name": "k8s-pod-network",
+  "cniVersion": "0.3.1",
+  "plugins": [
+    {
+      "type": "bridge",
+      "bridge": "docker0",
+      "isDefaultGateway": true,
+      "forceAddress": false,
+      "ipMasq": true,
+      "hairpinMode": true,
+      "ipam": {
+        "type": "host-local",
+        "subnet": "$POD_CIDR"
+      }
+    }
+  ]
+}
+EOF
+echo "cni config:"
+sudo cat /etc/cni/net.d/10-coylenet.conflist
 
 
 #kubectl apply -f dns.yaml
