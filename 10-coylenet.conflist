@@ -11,7 +11,7 @@
       "hairpinMode": true,
       "ipam": {
         "type": "host-local",
-        "subnet": "10.0.0.0/16"
+        "subnet": "__POD_CIDR__"
       }
     }
   ]
