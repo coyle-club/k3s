@@ -42,7 +42,7 @@ data:
 
         location / {
           resolver 10.1.0.2;
-          proxy_pass http://$upstream_endpoint$request_uri;
+          proxy_pass https://$upstream_endpoint$request_uri;
           proxy_http_version 1.1;
         }
     }
