@@ -42,8 +42,12 @@ data:
 
         location / {
           resolver 10.1.0.2;
-          proxy_pass https://$upstream_endpoint$request_uri;
-          proxy_http_version 1.1;
+          if $upstream_endpoint != "" {
+            proxy_pass https://$upstream_endpoint$request_uri;
+            proxy_http_version 1.1;
+          } else {
+            return 200 "Howdy";
+          }
         }
     }
   htpasswd: |
