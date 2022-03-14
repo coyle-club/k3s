@@ -1,0 +1,11 @@
+frr version 6.0.2
+frr defaults traditional
+log syslog informational
+no ipv6 forwarding
+service integrated-vtysh-config
+!
+router rip
+ network 192.168.1.0/24
+ route __POD_CIDR__
+!
+line vty

@@ -1,25 +1,28 @@
 #!/bin/bash
 
+ARCH=$(dpkg --print-architecture)
+CNI_VERSION="1.1.1"
+
 if [[ -f /usr/local/bin/k3s-uninstall.sh ]]; then
 	echo "Uninstalling k3s..."
 	k3s-uninstall.sh
 fi
 
-if [[ ! -d /opt/cni/bin ]]; then
+if [[ ! -x /opt/cni/bin/host-local ]] || [[ $(/opt/cni/bin/host-local -v) == "CNI host-local plugin v$CNI_VERSION" ]]; then
 	echo "Installing CNI plugins..."
-	sudo mkdir -p /opt/cni/bin
-	sudo curl "https://github.com/containernetworking/plugins/releases/download/v1.1.0/cni-plugins-linux-arm-v1.1.0.tgz" | tar xvzf -C /opt/cni/bin
+	mkdir -p /opt/cni/bin
+	curl -sL "https://github.com/containernetworking/plugins/releases/download/v$CNI_VERSION/cni-plugins-linux-$ARCH-v$CNI_VERSION.tgz" | tar xvz -C /opt/cni/bin
 fi
 
 echo "Installing k3s..."
 curl -sfL https://get.k3s.io | INSTALL_K3S_SKIP_START=true sh - $@
 
 echo "Writing k3s config..."
-sudo mkdir -p /etc/rancher/k3s
-sudo cp config.yaml /etc/rancher/k3s/
+mkdir -p /etc/rancher/k3s
+cp config.yaml /etc/rancher/k3s/
 
 echo "Starting k3s..."
-sudo service k3s start
+service k3s start
 
 
 NODE_NAME=$(hostname)
@@ -34,8 +37,16 @@ echo " -> $POD_CIDR"
 
 echo "Writing CNI config..."
 sed "s!__POD_CIDR__!$POD_CIDR!g" 10-cni.conflist.template > /tmp/cni.conflist
-sudo cp /tmp/cni.conflist /etc/cni/net.d/10-cni.conflist
-rm /tmp/cni.conflist
+mv /tmp/cni.conflist /etc/cni/net.d/10-cni.conflist
+
+echo "Configuring frr..."
+sed "s!__POD_CIDR__!$POD_CIDR!g" frr.conf.template > /tmp/frr.conf
+mv /tmp/frr.conf /etc/frr/frr.conf
+
+sed "s/ripd=no/ripd=yes/g" /etc/frr/daemons > /tmp/daemons
+mv /tmp/daemons /etc/frr/daemons
+
+service frr restart
 
 echo "Setting up cert-manager..."
 kubectl create namespace cert-manager
