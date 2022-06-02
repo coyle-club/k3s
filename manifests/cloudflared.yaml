@@ -1,0 +1,38 @@
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: cloudflare
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: cloudflared
+  name: cloudflared
+  namespace: cloudflare
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: cloudflared
+  template:
+    metadata:
+      labels:
+        app: cloudflared
+    spec:
+      containers:
+      - image: cloudflare/cloudflared:2022.5.3
+        name: cloudflared
+        args:
+        - tunnel
+        - --no-autoupdate
+        - run
+        - --token
+        - $(CLOUDFLARED_TOKEN)
+        env:
+        - name: CLOUDFLARED_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: cloudflared
+              key: cloudflared-tunnel-token

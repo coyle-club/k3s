@@ -1,0 +1,503 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: monitoring
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: coyle-wildcard
+  namespace: monitoring
+spec:
+  secretName: coyle-wildcard
+  dnsNames:
+  - '*.coyle.club'
+  - '*.monitoring.svc.coyle.club'
+  issuerRef:
+    name: letsencrypt
+    kind: ClusterIssuer
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: prometheus
+rules:
+- apiGroups: [""]
+  resources:
+  - nodes
+  - nodes/metrics
+  - services
+  - endpoints
+  - pods
+  verbs: ["get", "list", "watch"]
+- apiGroups: [""]
+  resources:
+  - configmaps
+  verbs: ["get"]
+- apiGroups:
+  - networking.k8s.io
+  resources:
+  - ingresses
+  verbs: ["get", "list", "watch"]
+- nonResourceURLs: ["/metrics"]
+  verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: prometheus
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: prometheus
+subjects:
+- kind: ServiceAccount
+  name: default
+  namespace: monitoring
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-conf
+  namespace: monitoring
+data:
+  prometheus.yml: |
+    global:
+      scrape_interval:     15s
+      evaluation_interval: 15s
+
+    rule_files: []
+
+    scrape_configs:
+    - job_name: prometheus
+      static_configs:
+      - targets:
+        - localhost:9090
+    - job_name: kube-apiservers
+      kubernetes_sd_configs:
+      - role: endpoints
+      scheme: https
+      tls_config:
+        ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+      bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+      relabel_configs:
+      - source_labels: [__meta_kubernetes_namespace, __meta_kubernetes_service_name, __meta_kubernetes_endpoint_port_name]
+        action: keep
+        regex: default;kubernetes;https
+    - job_name: kube-nodes
+      scheme: https
+      tls_config:
+        ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+      bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+      kubernetes_sd_configs:
+      - role: node
+      relabel_configs:
+      - action: labelmap
+        regex: __meta_kubernetes_node_label_(.+)
+      - target_label: __address__
+        replacement: kubernetes.default.svc:443
+      - source_labels: [__meta_kubernetes_node_name]
+        regex: (.+)
+        target_label: __metrics_path__
+        replacement: /api/v1/nodes/${1}/proxy/metrics
+    - job_name: kube-pods
+      kubernetes_sd_configs:
+      - role: pod
+      relabel_configs:
+      - source_labels: 
+        - __meta_kubernetes_pod_container_port_name
+        action: keep
+        regex: metrics
+      - action: replace
+        regex: (.+)
+        source_labels:
+        - __meta_kubernetes_pod_annotation_prometheus_io_path
+        target_label: __metrics_path__
+      - action: replace
+        regex: ([^:]+)(?::\d+)?;(\d+)
+        replacement: $1:$2
+        source_labels:
+        - __address__
+        - __meta_kubernetes_pod_annotation_prometheus_io_port
+        target_label: __address__
+      - action: labelmap
+        regex: __meta_kubernetes_pod_label_(.+)
+      - action: replace
+        source_labels:
+        - __meta_kubernetes_namespace
+        target_label: namespace
+      - action: replace
+        source_labels:
+        - __meta_kubernetes_pod_name
+        target_label: pod
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nginx-prom-conf
+  namespace: monitoring
+data:
+  expose.conf: |
+    server_names_hash_bucket_size 64;
+
+    server {
+      listen 80;
+      server_name *.coyle.club;
+
+      location /healthcheck {
+        return 200 "OK";
+      }
+
+      location / {
+        return 301 https://$host$request_uri;
+      }
+    }
+
+    server {
+        listen 443 ssl;
+
+        ssl_certificate /etc/nginx/ssl/tls.crt;
+        ssl_certificate_key /etc/nginx/ssl/tls.key;
+
+        server_name *.coyle.club;
+
+        location / {
+          proxy_pass http://127.0.0.1:9090/;
+          proxy_http_version 1.1;
+          proxy_set_header Host $http_host;
+        }
+    }
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nginx-graf-conf
+  namespace: monitoring
+data:
+  expose.conf: |
+    server_names_hash_bucket_size 64;
+
+    server {
+      listen 80;
+      server_name *.coyle.club;
+
+      location /healthcheck {
+        return 200 "OK";
+      }
+
+      location / {
+        return 301 https://$host$request_uri;
+      }
+    }
+
+    server {
+        listen 443 ssl;
+
+        ssl_certificate /etc/nginx/ssl/tls.crt;
+        ssl_certificate_key /etc/nginx/ssl/tls.key;
+
+        server_name *.coyle.club;
+
+        location / {
+          proxy_pass http://127.0.0.1:3000/;
+          proxy_http_version 1.1;
+          proxy_set_header Host $http_host;
+          proxy_pass_header Cf-Access-Authenticated-User-Email;
+        }
+    }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app: prometheus
+  name: prometheus
+  namespace: monitoring
+spec:
+  ports:
+  - name: http
+    port: 80
+    protocol: TCP
+    targetPort: 80
+  - name: https
+    port: 443
+    protocol: TCP
+    targetPort: 443
+  selector:
+    app: prometheus
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: prometheus
+  namespace: monitoring
+spec:
+  serviceName: "prometheus"
+  replicas: 1
+  selector:
+    matchLabels:
+      app: prometheus
+  template:
+    metadata:
+      labels:
+        app: prometheus
+    spec:
+      containers:
+      - name: prometheus
+        image: prom/prometheus:v2.35.0
+        args:
+        - "--web.listen-address=127.0.0.1:9090"
+        - "--config.file=/etc/prometheus/conf/prometheus.yml"
+        - "--storage.tsdb.path=/prometheus"
+        - "--storage.tsdb.retention.time=730d"
+        - "--storage.tsdb.retention.size=10GB"
+        - "--web.console.libraries=/usr/share/prometheus/console_libraries"
+        - "--web.console.templates=/usr/share/prometheus/consoles"
+        ports:
+        - containerPort: 9090
+          name: prom
+        volumeMounts:
+        - name: storage
+          mountPath: /prometheus
+        - name: prometheus-conf
+          mountPath: /etc/prometheus/conf
+      - image: nginx
+        name: nginx
+        ports:
+        - containerPort: 80
+        - containerPort: 443
+        volumeMounts:
+        - mountPath: /etc/nginx/conf.d
+          name: nginx-conf
+        - mountPath: /etc/nginx/ssl
+          name: ssl
+      volumes:
+      - name: prometheus-conf
+        configMap:
+          name: prometheus-conf
+      - name: nginx-conf
+        configMap:
+          name: nginx-prom-conf
+      - name: ssl
+        secret:
+          secretName: coyle-wildcard
+  volumeClaimTemplates:
+  - metadata:
+      name: storage
+    spec:
+      accessModes: [ "ReadWriteOnce" ]
+      resources:
+        requests:
+          storage: 10Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app: grafana
+  name: grafana
+  namespace: monitoring
+spec:
+  ports:
+  - name: http
+    port: 80
+    protocol: TCP
+    targetPort: 80
+  - name: https
+    port: 443
+    protocol: TCP
+    targetPort: 443
+  selector:
+    app: grafana
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: grafana
+  namespace: monitoring
+spec:
+  serviceName: "grafana"
+  replicas: 1
+  selector:
+    matchLabels:
+      app: grafana
+  template:
+    metadata:
+      labels:
+        app: grafana
+    spec:
+      containers:
+      - name: grafana
+        image: grafana/grafana-oss:8.5.2
+        env:
+        - name: GF_AUTH_PROXY_ENABLED
+          value: "true"
+        - name: GF_AUTH_PROXY_HEADER_NAME
+          value: "Cf-Access-Authenticated-User-Email"
+        ports:
+        - containerPort: 3000
+          name: graf
+        volumeMounts:
+        - name: storage
+          mountPath: /var/lib/grafana
+      - image: nginx
+        name: nginx
+        ports:
+        - containerPort: 80
+        - containerPort: 443
+        volumeMounts:
+        - mountPath: /etc/nginx/conf.d
+          name: nginx-conf
+        - mountPath: /etc/nginx/ssl
+          name: ssl
+      volumes:
+      - name: nginx-conf
+        configMap:
+          name: nginx-graf-conf
+      - name: ssl
+        secret:
+          secretName: coyle-wildcard
+  volumeClaimTemplates:
+  - metadata:
+      name: storage
+    spec:
+      accessModes: [ "ReadWriteOnce" ]
+      resources:
+        requests:
+          storage: 10Gi
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: rtl-prom-conf
+  namespace: monitoring
+data:
+  config.json: |
+    [
+      {
+        "match": {
+          "model": "ERT-SCM",
+          "id": "42243013"
+        },
+        "value_fields": ["consumption_data", "timestamp"],
+        "label_fields": ["model", "id", "ert_type"],
+        "description": "Electric consumption",
+        "metric_name": "electric"
+      },
+      {
+        "match": {
+          "model": "ERT-SCM",
+          "id": "44471729"
+        },
+        "value_fields": ["consumption_data", "timestamp"],
+        "label_fields": ["model", "id", "ert_type"],
+        "description": "Gas consumption",
+        "metric_name": "gas"
+      },
+      {
+        "match": {
+          "model": "Fineoffset-WH51"
+        },
+        "value_fields": ["battery_mV", "moisture", "timestamp"],
+        "label_fields": ["model", "id"],
+        "metric_name": "moisture",
+        "description": "Moisture sensor"
+      }
+    ]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: rtl-prom
+  name: rtl-prom
+  namespace: monitoring
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: rtl-prom
+  template:
+    metadata:
+      labels:
+        app: rtl-prom
+    spec:
+      containers:
+      - name: rtl-prom
+        image: docker.coyle.club/internal/rtl_prom:1
+        args: ["--port", "8080", "/etc/rtl_prom/config.json", "/var/log/rtl_433/rtl_433.json"]
+        volumeMounts:
+        - mountPath: /etc/rtl_prom
+          name: conf
+        - mountPath: /var/log/rtl_433
+          name: logs
+        ports:
+        - containerPort: 8080
+          name: metrics
+      volumes:
+      - name: conf
+        configMap:
+          name: rtl-prom-conf
+      - name: logs
+        hostPath:
+          path: /var/log/rtl_433
+          type: Directory
+---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app: rtl-prom
+  name: rtl-prom
+  namespace: monitoring
+spec:
+  ports:
+  - name: metrics
+    port: 8080
+    protocol: TCP
+    targetPort: 8080
+  selector:
+    app: rtl-prom
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: scd30-prom
+  name: scd30-prom
+  namespace: monitoring
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: scd30-prom
+  template:
+    metadata:
+      labels:
+        app: scd30-prom
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsGroup: 998
+        runAsUser: 65532
+        fsGroup: 998
+      nodeSelector:
+        kubernetes.io/hostname: mycomaster
+      containers:
+      - name: scd30-prom
+        image: docker.coyle.club/internal/scd30_prom:11
+        args: ["--label", "source=mycomaster"]
+        securityContext:
+          privileged: true
+        volumeMounts:
+        - mountPath: /dev/i2c-1
+          name: i2c
+        ports:
+        - containerPort: 5000
+          name: metrics
+      volumes:
+      - name: i2c
+        hostPath:
+          path: /dev/i2c-1
+          type: CharDevice
+

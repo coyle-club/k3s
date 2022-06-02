@@ -8,5 +8,7 @@ flannel-backend: "none"
 disable:
 - traefik
 - metrics-server
+- coredns
 disable-network-policy: true
 no-flannel: true
+kube-proxy-arg: proxy-mode=ipvs

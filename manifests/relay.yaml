@@ -1,0 +1,131 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nginx-relay-conf
+  namespace: cloudflare
+data:
+  expose.conf: |
+    server_names_hash_bucket_size 64;
+
+    server {
+      listen 80;
+      server_name *.coyle.club;
+
+      location /healthcheck {
+        return 200 "OK";
+      }
+
+      location / {
+        return 301 https://$host$request_uri;
+      }
+    }
+
+    server {
+      listen 5000;
+
+      location /metrics {
+        proxy_pass http://127.0.0.1:8000;
+      }
+    }
+
+    server {
+        listen 443 ssl;
+
+        ssl_certificate /etc/nginx/ssl/tls.crt;
+        ssl_certificate_key /etc/nginx/ssl/tls.key;
+
+        server_name *.coyle.club;
+
+        location / {
+          proxy_pass http://127.0.0.1:8000/;
+          proxy_http_version 1.1;
+          proxy_set_header Host $http_host;
+        }
+    }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app: relay
+  name: relay
+  namespace: cloudflare
+spec:
+  ports:
+  - name: http
+    port: 80
+    protocol: TCP
+    targetPort: 80
+  - name: https
+    port: 443
+    protocol: TCP
+    targetPort: 443
+  selector:
+    app: relay
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: relay
+  namespace: cloudflare
+spec:
+  serviceName: "rrelay"
+  replicas: 1
+  selector:
+    matchLabels:
+      app: relay
+  template:
+    metadata:
+      labels:
+        app: relay
+    spec:
+      containers:
+      - name: relay
+        image: docker.coyle.club/internal/relay:1
+        ports:
+        - containerPort: 8000
+          name: http
+        volumeMounts:
+        - name: relay-storage
+          mountPath: /var/lib/relay
+      - image: cloudflare/cloudflared:2022.5.1
+        name: cloudflared
+        args:
+        - tunnel
+        - --no-autoupdate
+        - run
+        - --token
+        - $(CLOUDFLARED_TOKEN)
+        env:
+        - name: CLOUDFLARED_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: cloudflared
+              key: cloudflared-relay-token
+      - image: nginx
+        name: nginx
+        ports:
+        - containerPort: 80
+        - containerPort: 443
+        - containerPort: 5000
+          name: metrics
+        volumeMounts:
+        - mountPath: /etc/nginx/conf.d
+          name: nginx-conf
+        - mountPath: /etc/nginx/ssl
+          name: ssl
+      volumes:
+      - name: nginx-conf
+        configMap:
+          name: nginx-relay-conf
+      - name: ssl
+        secret:
+          secretName: coyle-wildcard
+  volumeClaimTemplates:
+  - metadata:
+      name: relay-storage
+    spec:
+      accessModes: [ "ReadWriteOnce" ]
+      resources:
+        requests:
+          storage: 10Gi

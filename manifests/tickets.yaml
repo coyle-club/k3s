@@ -1,0 +1,63 @@
+---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app: tickets
+  name: tickets
+  namespace: default
+spec:
+  ports:
+  - name: http
+    port: 80
+    protocol: TCP
+    targetPort: 80
+  - name: https
+    port: 443
+    protocol: TCP
+    targetPort: 443
+  selector:
+    app: tickets
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: tickets
+  namespace: default
+spec:
+  serviceName: "tickets"
+  replicas: 1
+  selector:
+    matchLabels:
+      app: tickets
+  template:
+    metadata:
+      labels:
+        app: tickets
+    spec:
+      containers:
+      - name: tickets
+        image: docker.coyle.club/internal/tickets:3
+        args: ["--access-logfile", "-", "--certfile", "/etc/ssl/coyle.club/tls.crt", "--keyfile", "/etc/ssl/coyle.club/tls.key", "--bind", ":443"]
+        ports:
+        - containerPort: 80
+          name: http
+        - containerPort: 443
+          name: https
+        volumeMounts:
+        - name: wh-tickets-storage
+          mountPath: /var/lib/tickets
+        - name: ssl
+          mountPath: /etc/ssl/coyle.club
+      volumes:
+      - name: ssl
+        secret:
+          secretName: coyle-wildcard
+  volumeClaimTemplates:
+  - metadata:
+      name: wh-tickets-storage
+    spec:
+      accessModes: [ "ReadWriteOnce" ]
+      resources:
+        requests:
+          storage: 1Gi
