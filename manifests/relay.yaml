@@ -69,7 +69,7 @@ metadata:
   name: relay
   namespace: cloudflare
 spec:
-  serviceName: "rrelay"
+  serviceName: "relay"
   replicas: 1
   selector:
     matchLabels:
@@ -88,7 +88,7 @@ spec:
         volumeMounts:
         - name: relay-storage
           mountPath: /var/lib/relay
-      - image: cloudflare/cloudflared:2022.5.1
+      - image: cloudflare/cloudflared:2022.5.3
         name: cloudflared
         args:
         - tunnel

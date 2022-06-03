@@ -56,29 +56,30 @@ metadata:
 data:
   Corefile: |
     .:53 {
-        errors
-        health
-        ready
-        kubernetes coyle.club in-addr.arpa ip6.arpa {
-          pods insecure
-          fallthrough in-addr.arpa ip6.arpa
-        }
-        rewrite name grafana.coyle.club grafana.monitoring.svc.coyle.club
-        rewrite name docker.coyle.club registry.docker.svc.coyle.club
-        rewrite name relay.coyle.club relay.cloudflare.svc.coyle.club
-        hosts /etc/coredns/NodeHosts {
-          ttl 60
-          reload 15s
-          fallthrough
-        }
-        prometheus :9153
-        forward . /etc/resolv.conf
-        cache 30
-        loop
-        reload
-        loadbalance
+      errors
+      health
+      ready
+      rewrite name grafana.coyle.club grafana.monitoring.svc.coyle.club
+      rewrite name docker.coyle.club registry.docker.svc.coyle.club
+      rewrite name relay.coyle.club relay.cloudflare.svc.coyle.club
+      kubernetes coyle.club in-addr.arpa ip6.arpa {
+        pods insecure
+      }
+      hosts /etc/coredns/NodeHosts {
+        ttl 60
+        reload 15s
+        fallthrough
+      }
+      prometheus :9153
+      auto {
+        directory /etc/coredns/zones
+      }
+      forward . /etc/resolv.conf
+      cache 30
+      loop
+      reload
+      loadbalance
     }
-    import /etc/coredns/custom/*.server
 ---
 apiVersion: apps/v1
 kind: Deployment

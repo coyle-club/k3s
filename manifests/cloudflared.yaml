@@ -4,6 +4,20 @@ kind: Namespace
 metadata:
   name: cloudflare
 ---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: coyle-wildcard
+  namespace: cloudflare
+spec:
+  secretName: coyle-wildcard
+  dnsNames:
+  - '*.coyle.club'
+  - '*.cloudflare.svc.coyle.club'
+  issuerRef:
+    name: letsencrypt
+    kind: ClusterIssuer
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
